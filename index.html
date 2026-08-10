@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Klickrr - Edit</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div id="app">
+      <div id="toolbars">
+        <div id="toolbar-standard"></div>
+        <div id="toolbar-html"></div>
+      </div>
+
+      <div id="tabbar"></div>
+
+      <div id="main">
+        <div id="sidebar"></div>
+        <div id="sidebar-splitter" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
+        <div id="editor-area">
+          <div id="ruler"></div>
+          <div id="editor-host"></div>
+          <div id="split-host" class="hidden"></div>
+          <canvas id="minimap" class="hidden"></canvas>
+          <div id="preview-pane" class="hidden"><div class="preview-header">Secure Preview <button id="preview-close">✕</button></div><iframe id="preview-frame" sandbox=""></iframe></div>
+          <div id="hexview" class="hidden"></div>
+        </div>
+      </div>
+
+      <div id="terminal-panel" class="hidden">
+        <div class="output-header">
+          <span class="output-title">Terminal</span>
+          <span style="flex: 1"></span>
+          <button class="output-btn" id="terminal-close" title="Hide terminal">✕</button>
+        </div>
+        <div id="terminal-host"></div>
+      </div>
+
+      <div id="output" class="hidden"></div>
+
+      <div id="statusbar">
+        <span id="status-pos">Ln 1, Col 1</span>
+        <span id="status-lang">Plain Text</span>
+        <span id="status-format">UTF-8 · LF</span>
+        <span id="status-path" class="status-right"></span>
+      </div>
+    </div>
+
+    <pre id="print-area"></pre>
+    <input type="color" id="color-input" style="position: fixed; left: -9999px" />
+  </body>
+</html>

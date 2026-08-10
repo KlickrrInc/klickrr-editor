@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Klickrr - Edit",
+  "version": "0.1.0",
+  "identifier": "com.klickrr.edit",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Klickrr - Edit",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 480,
+        "minHeight": 320,
+        "tabbingIdentifier": "com.klickrr.edit.editor"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": ["txt", "text", "log", "md", "markdown", "html", "htm", "xml", "css", "scss", "less", "js", "jsx", "mjs", "cjs", "ts", "tsx", "json", "yaml", "yml", "toml", "ini", "conf", "sh", "bash", "zsh", "py", "pyw", "rb", "php", "java", "c", "h", "cpp", "cc", "cxx", "hpp", "rs", "swift", "m", "mm", "sql", "csv", "tsv"],
+        "name": "Text and source document",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

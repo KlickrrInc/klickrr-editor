@@ -1,0 +1,819 @@
+# Product Requirements Specification: Klickrr Edit for macOS
+
+## 1. Product vision
+
+Build a fast, lightweight, native macOS text and source-code editor aimed at programmers, web developers, system administrators, and users who need more power than TextEdit without the complexity of a full IDE.
+
+The product should combine fast editing, customizable syntax highlighting,
+remote-file editing, integrated previews, user tools, snippets, templates, and
+hex viewing while following macOS conventions.
+
+---
+
+## 2. Target users
+
+### Primary users
+
+- Developers editing source code, configuration files, logs, and scripts
+- Web developers editing HTML, CSS, JavaScript, PHP, and related files
+- Server administrators editing files through SFTP
+- Users replacing TextEdit with a programmer-oriented editor
+
+### Secondary users
+
+- Technical writers using Markdown or plain text
+- Students learning programming
+- Users inspecting large log files or binary files
+- Developers running compilers, formatters, and scripts from an editor
+
+---
+
+## 3. Product goals
+
+The application shall:
+
+- Launch quickly and remain responsive.
+- Support both individual files and folders/projects.
+- Handle large files more efficiently than a typical IDE.
+- provide excellent keyboard-driven editing.
+- Preserve file encodings and line-ending formats.
+- Allow users to edit remote files safely.
+- Integrate naturally with macOS.
+- Be extensible without requiring a full plugin platform in the first release.
+
+The application is not initially intended to provide:
+
+- Full IDE-level debugging
+- Project compilation systems comparable to Xcode
+- Collaborative real-time editing
+- Cloud account synchronization
+- AI coding assistance
+- A complete language-server marketplace
+
+These can be considered later.
+
+---
+
+# 4. Functional requirements
+
+Priority definitions:
+
+- **P0:** Required for MVP
+- **P1:** Required for a competitive first release
+- **P2:** Advanced or post-launch feature
+
+## 4.1 Application and document management
+
+### FR-DOC-001 — Create, open, and save files — P0
+
+The user shall be able to:
+
+- Create untitled documents
+- Open one or multiple files
+- Save and Save As
+- Duplicate a document
+- Rename or move an open file
+- Revert to the last saved version
+- Close one, several, or all documents
+
+Acceptance criteria:
+
+- Unsaved documents display a modified indicator.
+- Closing a modified document presents Save, Don’t Save, and Cancel choices.
+- Atomic saving is used where possible, preventing partial-file corruption.
+- Save failures clearly identify the file and reason.
+
+### FR-DOC-002 — Tabbed document interface — P0
+
+- Every open document shall appear in a tab.
+- Tabs shall show filename, modification state, and optionally a file-type icon.
+- Users shall be able to reorder, pin, close, and reopen tabs.
+- The application shall support configurable tab behavior, including preview tabs.
+
+### FR-DOC-003 — Session restoration — P0
+
+- The application shall restore open documents and window layout after restarting.
+- Unsaved documents shall be recoverable after a crash.
+- Users shall be able to disable session restoration.
+
+### FR-DOC-004 — Recent files and folders — P0
+
+- Provide recent-file and recent-folder lists.
+- Missing files shall be identifiable and removable from history.
+- Users shall be able to clear history.
+
+### FR-DOC-005 — Split editing — P1
+
+- Support horizontal and vertical splits.
+- The same document may be displayed in multiple panes.
+- Each pane shall maintain an independent cursor and scroll position.
+- Optional synchronized scrolling shall be supported.
+
+---
+
+## 4.2 Core text-editing engine
+
+### FR-EDIT-001 — Standard editing — P0
+
+Support:
+
+- Cut, copy, paste, and paste without formatting
+- Unlimited or configurable undo/redo
+- Drag-and-drop text
+- Select all
+- Duplicate line or selection
+- Move lines up or down
+- Join and split lines
+- Delete line, word, or whitespace
+- Change case
+- Trim trailing whitespace
+- Sort lines
+- Remove duplicate lines
+
+Undo and redo shall preserve selections and cursor positions.
+
+### FR-EDIT-002 — Multiple cursors and selections — P1
+
+- Add cursors using keyboard or Option-click.
+- Edit all selected locations simultaneously.
+- Select next or all occurrences of selected text.
+- Undo multiple-cursor edits as one logical operation.
+
+### FR-EDIT-003 — Column selection — P0
+
+- Support rectangular or column-based selection.
+- Typing, deleting, indenting, and pasting shall work across the selected columns.
+- Column selection shall work with tabs and proportional fonts, with clearly defined behavior.
+
+### FR-EDIT-004 — Indentation — P0
+
+Support:
+
+- Tabs or spaces
+- Configurable tab width
+- Automatic indentation
+- Increase/decrease indentation
+- Convert tabs to spaces and spaces to tabs
+- Detect indentation settings from the current file
+- Language-specific indentation preferences
+
+### FR-EDIT-005 — Line and character navigation — P0
+
+Provide:
+
+- Go to line and column
+- Go to byte offset
+- Beginning/end of line and document
+- Page navigation
+- Word and subword navigation
+- Matching bracket navigation
+- Back/forward cursor-location history
+
+### FR-EDIT-006 — Visual editing aids — P0
+
+Support:
+
+- Line numbers
+- Current-line highlighting
+- Ruler
+- Indentation guides
+- Visible spaces, tabs, and line endings
+- Configurable right-margin guides
+- Word wrap
+- Minimap as an optional P2 enhancement
+
+### FR-EDIT-007 — Bookmarks and markers — P1
+
+- Toggle bookmarks on lines.
+- Navigate to previous or next bookmark.
+- Display all bookmarks in a panel.
+- Delete bookmarked or unbookmarked lines.
+- Persist bookmarks within a restored session.
+
+---
+
+## 4.3 Search and replace
+
+### FR-SEARCH-001 — Document search — P0
+
+The editor shall support:
+
+- Find and replace
+- Find next/previous
+- Case-sensitive matching
+- Whole-word matching
+- Regular expressions
+- Search within selection
+- Wrap-around search
+- Incremental “find as you type”
+- Match count
+- Search history
+
+Matches shall be highlighted without blocking typing.
+
+### FR-SEARCH-002 — Multiline regular expressions — P1
+
+- Regular expressions shall be able to match across line boundaries.
+- Replacement strings shall support capture groups.
+- Invalid expressions shall display a useful error without changing the document.
+
+### FR-SEARCH-003 — Find in files — P0
+
+Search shall support:
+
+- Current file
+- Open documents
+- Selected folder or project
+- Include and exclude patterns
+- Hidden-file inclusion
+- Case and regular-expression options
+- Respecting `.gitignore`, when enabled
+
+Results shall show file, line number, and preview. Selecting a result shall open the file at the corresponding location.
+
+### FR-SEARCH-004 — Replace in files — P1
+
+- Show a preview of all proposed replacements.
+- Allow users to include or exclude individual matches.
+- Create an undoable or recoverable transaction.
+- Report files that could not be modified.
+
+---
+
+## 4.4 Programming-language support
+
+### FR-LANG-001 — Syntax highlighting — P0
+
+Initial languages should include:
+
+- Plain text
+- HTML and XML
+- CSS, SCSS
+- JavaScript and TypeScript
+- JSON and YAML
+- Markdown
+- Python
+- PHP
+- Ruby
+- Java
+- C, C++, and Objective-C
+- Swift
+- Shell scripts
+- SQL
+- INI, TOML, and common configuration formats
+
+The highlighting system shall recognize embedded languages, such as JavaScript and CSS inside HTML.
+
+### FR-LANG-002 — Custom language definitions — P1
+
+Users shall be able to define or install language configurations containing:
+
+- File extensions
+- Keywords
+- Comment syntax
+- String syntax
+- Number patterns
+- Bracket pairs
+- Folding rules
+- Color-token mappings
+
+Invalid definitions shall produce a diagnostic message rather than crash the application.
+
+### FR-LANG-003 — Code folding — P0
+
+Support folding based on:
+
+- Language structure
+- Braces
+- Markup elements
+- Indentation
+- User-selected regions
+
+Commands shall include fold/unfold current region and fold/unfold all.
+
+### FR-LANG-004 — Bracket and tag matching — P0
+
+- Highlight matching brackets near the cursor.
+- Navigate between bracket pairs.
+- Detect mismatched brackets.
+- Optionally match opening and closing HTML/XML tags.
+
+### FR-LANG-005 — Autocomplete — P1
+
+Provide:
+
+- Word completion from the current document
+- Language keyword completion
+- User-defined abbreviation expansion
+- Snippet completion
+- Optional project-wide symbol completion
+
+Autocomplete shall be dismissible and shall not interfere with normal typing.
+
+### FR-LANG-006 — Function and symbol list — P1
+
+- Display functions, classes, methods, headings, or markup IDs in a navigation panel.
+- Filter symbols by typing.
+- Selecting a symbol shall move the cursor to its definition.
+
+### FR-LANG-007 — Language Server Protocol — P2
+
+Optional LSP support should provide:
+
+- Diagnostics
+- Hover documentation
+- Go to definition
+- Find references
+- Document symbols
+- Rename symbol
+- Semantic completion
+
+LSP processes must be isolated so that a failed server cannot crash the editor.
+
+---
+
+## 4.5 File formats and encodings
+
+### FR-FILE-001 — Encoding support — P0
+
+Support at minimum:
+
+- UTF-8 with and without BOM
+- UTF-16 little- and big-endian
+- ASCII
+- Common legacy encodings available through macOS
+
+The editor shall:
+
+- Automatically detect likely encoding
+- Display the current encoding
+- Allow reopen-with-encoding
+- Allow save-with-encoding
+- Warn before saving characters that cannot be represented
+
+### FR-FILE-002 — Line endings — P0
+
+Support:
+
+- LF
+- CRLF
+- Legacy CR
+
+The status bar shall display the current format. Users shall be able to convert a document’s line endings.
+
+### FR-FILE-003 — External changes — P0
+
+If another program changes an open file:
+
+- Reload automatically when the document is unmodified, depending on preference.
+- Prompt the user when local unsaved changes exist.
+- Provide compare, reload, and keep-current options.
+- Never silently overwrite conflicting modifications.
+
+### FR-FILE-004 — Large-file mode — P1
+
+The editor should open large text and log files without loading the complete decoded file into a single in-memory string.
+
+Large-file mode may disable expensive features such as:
+
+- Full-document syntax analysis
+- Minimap
+- Complete undo history
+- Project-wide symbol indexing
+
+The interface shall clearly identify disabled features.
+
+### FR-FILE-005 — Log watching — P1
+
+- Follow appended content, similar to `tail -f`.
+- Pause and resume following.
+- Preserve search and filtering capability.
+- Indicate file truncation or replacement.
+
+---
+
+## 4.6 Folder and project workspace
+
+### FR-PROJ-001 — Folder browser — P0
+
+- Open a folder as a workspace.
+- Display nested files and directories.
+- Create, rename, duplicate, move, and delete items.
+- Refresh automatically when filesystem contents change.
+- Support quick filtering.
+
+Deletion should use the macOS Trash by default.
+
+### FR-PROJ-002 — Quick Open — P0
+
+- Search project files using fuzzy matching.
+- Prioritize recently opened files.
+- Exclude ignored directories.
+- Open a result entirely from the keyboard.
+
+### FR-PROJ-003 — Project configuration — P1
+
+A project may store:
+
+- Root folders
+- Include/exclude rules
+- Language overrides
+- User tools
+- Remote-server mappings
+- Preview configuration
+
+Project settings should be portable where possible and must not contain unencrypted passwords.
+
+### FR-PROJ-004 — Git awareness — P2
+
+Provide lightweight Git integration:
+
+- Show modified, added, deleted, and untracked states.
+- Display file diff.
+- Open the repository in Terminal.
+- Run configurable Git commands.
+
+Full source-control management is not required initially.
+
+---
+
+## 4.7 Remote-file editing
+
+### FR-REMOTE-001 — SFTP — P1
+
+SFTP should be the primary remote protocol.
+
+Users shall be able to:
+
+- Configure a host, port, username, and initial directory
+- Authenticate using password, SSH key, or SSH agent
+- Browse remote directories
+- Download and upload files
+- Open and edit remote files
+- Create, rename, move, and delete remote items
+
+### FR-REMOTE-002 — FTP and FTPS — P2
+
+If legacy compatibility is a business requirement, support:
+
+- FTP
+- Explicit and implicit FTPS
+- Passive mode
+- Proxy configuration
+
+The interface should warn that plain FTP does not encrypt credentials or content.
+
+### FR-REMOTE-003 — Remote save safety — P1
+
+Remote saving shall:
+
+1. Upload to a temporary filename.
+2. Verify successful transfer.
+3. Rename the temporary file over the target where the server permits.
+4. Retain local recovery data if uploading fails.
+
+The application shall detect remote modification conflicts using timestamp, size, or stronger metadata where available.
+
+### FR-REMOTE-004 — Credential security — P1
+
+- Passwords and passphrases shall be stored only in macOS Keychain.
+- Private keys shall not be copied into project files.
+- Host keys shall be verified.
+- A changed host key shall produce a blocking security warning.
+
+---
+
+## 4.8 Web and Markdown preview
+
+### FR-PREVIEW-001 — Integrated preview — P1
+
+Use a WebKit-based preview pane for:
+
+- HTML
+- Markdown
+- Local web content
+
+Preview shall support:
+
+- Side-by-side layout
+- Open in external browser
+- Refresh on save
+- Optional automatic refresh while typing
+- Basic developer-console access as a later enhancement
+
+### FR-PREVIEW-002 — Preview security — P1
+
+- Local preview must not automatically gain unrestricted file access.
+- Remote navigation should be visibly distinguishable from local preview.
+- Potentially dangerous scripts should follow a configurable security policy.
+
+---
+
+## 4.9 Snippets, templates, and web-authoring tools
+
+### FR-SNIP-001 — Snippet library — P1
+
+Snippets shall support:
+
+- Name, description, language, and body
+- Tab stops
+- Placeholder values
+- Selected-text insertion
+- Current date, filename, and project variables
+- Keyboard abbreviation triggers
+- User-defined categories
+
+### FR-TEMPLATE-001 — Document templates — P1
+
+- Users can create documents from templates.
+- Templates may be assigned to file types.
+- Users can add, edit, import, and remove templates.
+
+### FR-WEB-001 — HTML tools — P2
+
+Possible web-authoring tools include:
+
+- Insert common tags
+- Wrap selection in a tag
+- Color picker
+- Character/entity picker
+- Table generator
+- HTML escaping/unescaping
+- URL encoding/decoding
+- JSON and XML formatting
+
+---
+
+## 4.10 User tools and automation
+
+### FR-TOOL-001 — External tools — P1
+
+Users shall be able to configure commands with:
+
+- Display name
+- Executable
+- Arguments
+- Working directory
+- Environment variables
+- Keyboard shortcut
+- Save-before-run option
+- Input from selection, document, or none
+- Output to panel, new document, replacement selection, or ignored
+
+Variables should include:
+
+- Current file path
+- Current directory
+- Project root
+- Selected text
+- Current line and column
+
+### FR-TOOL-002 — Output panel — P1
+
+- Stream stdout and stderr.
+- Show process exit status.
+- Allow cancellation.
+- Recognize configurable compiler error patterns.
+- Clicking a recognized error shall open the corresponding file and line.
+
+### FR-TOOL-003 — Macros — P2
+
+- Record editor commands and keystrokes.
+- Stop, replay, name, and save recordings.
+- Assign shortcuts to saved macros.
+- Prevent infinite recursive macro execution.
+
+---
+
+## 4.11 Hex viewer
+
+### FR-HEX-001 — Hexadecimal viewing — P1
+
+Display:
+
+- Byte offset
+- Hexadecimal values
+- Text interpretation
+- Configurable bytes per row
+- Search by text or byte sequence
+
+### FR-HEX-002 — Hex editing — P2
+
+If binary editing is offered:
+
+- Support overwrite operations initially.
+- Show modified bytes.
+- Provide undo/redo.
+- Require confirmation before saving structural or potentially destructive changes.
+- Preserve an optional backup.
+
+A read-only hex viewer is safer for the first release.
+
+---
+
+## 4.12 Customization
+
+### FR-CUST-001 — Themes — P0
+
+- Follow system light/dark appearance.
+- Include accessible built-in themes.
+- Allow customization of editor background, text, selections, caret, and syntax tokens.
+- Support theme import/export in a documented format.
+
+### FR-CUST-002 — Fonts — P0
+
+- Select editor font and size.
+- Support font ligatures as an option.
+- Provide zoom in, zoom out, and reset.
+- Persist zoom per window or globally, based on preference.
+
+### FR-CUST-003 — Keyboard shortcuts — P1
+
+- Every major command shall be keyboard accessible.
+- Users can add, change, and remove shortcuts.
+- Conflicts shall be detected.
+- Provide preset mappings, including a Mac-native default and an optional classic mapping.
+
+---
+
+# 5. macOS-specific requirements
+
+## FR-MAC-001 — Native conventions
+
+The product should support:
+
+- Standard macOS menu structure
+- Full-screen mode
+- Multiple windows
+- Retina displays
+- Dark Mode
+- Accessibility APIs
+- Services menu
+- Drag and drop
+- Quick Look integration where practical
+- “Open With” registration
+- Reopen windows at login
+- Automatic window tabbing, if compatible with the application design
+
+## FR-MAC-002 — Finder integration
+
+Provide:
+
+- Open folder or file in the editor
+- Reveal current file in Finder
+- Copy file path
+- Copy relative path
+- Optional Finder Quick Action
+
+## FR-MAC-003 — Terminal integration
+
+- Open the current file’s folder in Terminal.
+- Install an optional command-line launcher, for example `mcedit file.txt`.
+- If the command is unavailable, provide guided installation.
+- Command-line opening shall support line and column arguments.
+
+## FR-MAC-004 — Sandboxing and permissions
+
+If distributed through the Mac App Store:
+
+- Use security-scoped bookmarks for persistent folder access.
+- Request access only when required.
+- Explain why folder or network access is necessary.
+- Account for sandbox restrictions affecting external tools, shells, and remote access.
+
+Direct distribution may be preferable if unrestricted compiler and command execution is a core requirement.
+
+---
+
+# 6. Non-functional requirements
+
+## Performance
+
+- Cold launch target: under 2 seconds on a supported Apple Silicon Mac.
+- Typing latency: ideally below one display frame for typical files.
+- A 10 MB text file should open without an extended UI freeze.
+- Search and syntax processing shall run off the main UI thread.
+- Directory indexing shall be cancellable and incremental.
+
+## Reliability
+
+- Unsaved work shall be periodically recovered.
+- A crash in preview, language tooling, or an external command shall not terminate the editor.
+- Saving shall use atomic replacement where supported.
+- Recovery data shall be cleaned after a confirmed successful save.
+
+## Security
+
+- Store credentials in Keychain.
+- Verify SFTP host identities.
+- Never log passwords, private keys, document content, or sensitive command arguments.
+- Escape command arguments correctly.
+- Clearly distinguish shell execution from direct executable invocation.
+- Require explicit permission before a project automatically executes commands.
+
+## Privacy
+
+- Core editing shall work offline.
+- Telemetry shall be opt-in or clearly disclosed.
+- Crash reports shall not contain document contents.
+- Users shall be able to delete usage and recovery data.
+
+## Accessibility
+
+- Full VoiceOver labels and navigation
+- Keyboard access to every essential feature
+- Sufficient theme contrast
+- Reduced-motion support
+- Caret, selection, error, and search-result states exposed to accessibility APIs
+
+## Compatibility
+
+- Define a minimum supported macOS version.
+- Support Apple Silicon natively.
+- An Intel build should be included only if target-user research justifies it.
+- Preserve Unix permissions and extended attributes where appropriate.
+
+---
+
+# 7. Recommended interface layout
+
+A practical initial layout is:
+
+- **Top:** macOS toolbar and document tabs
+- **Left sidebar:** files, open documents, symbols, remote connections, snippets
+- **Center:** one or more editor panes
+- **Right pane:** optional preview or inspector
+- **Bottom panel:** search results, command output, diagnostics
+- **Status bar:** line/column, indentation, encoding, line ending, language, remote state
+
+All auxiliary panels should be hideable so the application can function as a distraction-free text editor.
+
+---
+
+# 8. Suggested release plan
+
+## MVP
+
+Implement first:
+
+- Native tabs and document management
+- Fast text editing
+- Undo/redo
+- Find/replace and regular expressions
+- Find in files
+- Folder workspace
+- Syntax highlighting
+- Code folding
+- Bracket matching
+- Line numbers and whitespace display
+- Column selection
+- Encoding and newline conversion
+- Session restoration and crash recovery
+- Themes, fonts, and basic preferences
+- Quick Open
+- macOS integration
+
+## Version 1.0
+
+Add:
+
+- SFTP remote editing
+- Web and Markdown preview
+- Snippets and templates
+- External tools and output parsing
+- Function/symbol list
+- Large-file and log-following modes
+- Custom keyboard shortcuts
+- Read-only hex viewer
+
+## Later releases
+
+Consider:
+
+- FTP/FTPS
+- Hex editing
+- Macros
+- LSP integration
+- Git status and diff
+- Extension API
+- Settings synchronization
+- Advanced HTML tools
+
+---
+
+# 9. Key release acceptance criteria
+
+The product is ready for its first public release when:
+
+1. Users can edit local files without data loss across normal saves, crashes, and external modifications.
+2. UTF-8, UTF-16, common legacy encodings, LF, CRLF, and CR are handled correctly.
+3. Typing and scrolling remain responsive in normal source files.
+4. Search, replace, and project search produce correct results.
+5. Syntax highlighting cannot block the interface or crash the application.
+6. Restored sessions accurately recover windows, tabs, and unsaved documents.
+7. SFTP credentials are stored in Keychain and host keys are verified.
+8. Remote upload failure cannot silently destroy the server copy.
+9. VoiceOver and keyboard-only workflows cover essential editing.
+10. Automated tests cover document saving, encoding conversion, search/replace, crash recovery, and remote-save conflict handling.
+
+For implementation, a strong native stack would be Swift, AppKit or SwiftUI with AppKit-backed editor components, TextKit 2 or a purpose-built text engine, Tree-sitter for parsing/highlighting, WebKit for preview, and Keychain for credentials. The text engine and save/recovery architecture should be prototyped first because they carry the greatest performance and data-loss risks.
