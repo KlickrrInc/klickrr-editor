@@ -79,6 +79,12 @@ wrap it in `fileops.ts`. New plugins also need a permission in
   values use blue tags/keywords/CSS-properties, magenta strings and attribute
   values, teal numbers, dark-red attribute names and CSS selectors, and green
   comments.
+- **Editor font:** size/family/ligatures are `--kr-font-*` CSS variables on
+  `:root`, written by `applyAppearance()` in `settings.ts` and consumed by
+  `.cm-scroller`/`.cm-content` in `theme.ts`. **Never put a literal `fontSize`
+  or `fontFamily` in `classicEditorTheme`** — a literal there has the same
+  specificity as the settings rule but is emitted later in the sheet, so it
+  silently wins and the font-size/font-family/zoom settings go dead.
 - **Add a language:** add an extension→`{label, extension}` entry in
   `languages.ts` and the `@codemirror/lang-*` dep. Highlighting maps through
   `theme.ts` by lezer tag, so no theme change is usually needed.
@@ -151,6 +157,16 @@ wrap it in `fileops.ts`. New plugins also need a permission in
   are reached through the native menu, which doesn't exist in the browser preview
   — verify them via `npm run tauri dev` or a throwaway `verify-*.html` page that
   imports and calls the opener directly.
+- **Menu accelerators must not collide.** Two items sharing a chord means macOS
+  silently routes it to one of them. Every app accelerator therefore lives in
+  the `KEY_COMMANDS` registry in `keymap.ts` and reaches the menu via
+  `accel("<id>")` — don't hardcode the string in `appmenu.ts`. Watch the
+  predefined items too: `PredefinedMenuItem "CloseWindow"` hardcodes ⌘W and used
+  to shadow File → Close Tab, so Window → Close Window is a custom item on ⇧⌘W.
+- **The ruler measures its own character width** (a hidden `.ruler-probe` run
+  styled from `--kr-font-*`). `view.defaultCharacterWidth` is a CodeMirror cache
+  that refreshes a measure-cycle late, so using it made the ruler misalign for
+  one step after every zoom.
 - **Bundle size warning** on build (~1 MB): all `lang-*` grammars are bundled.
   Fine for now; lazy-load later if it matters.
 

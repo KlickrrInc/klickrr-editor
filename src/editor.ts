@@ -20,7 +20,7 @@ import {
   highlightTrailingWhitespace,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { bracketMatching, indentOnInput, indentUnit, foldGutter, foldKeymap } from "@codemirror/language";
 import {
   closeBrackets,
@@ -41,18 +41,14 @@ export const languageCompartment = new Compartment();
 /** Compartment for the word-wrap toggle (View menu). */
 export const wrapCompartment = new Compartment();
 /** Compartments driven by Editor Settings (font size, tab size, line numbers). */
-export const fontCompartment = new Compartment();
 export const tabCompartment = new Compartment();
 export const lineNumberCompartment = new Compartment();
 export const aidCompartment = new Compartment();
 export const customThemeCompartment = new Compartment();
 export const spellCheckCompartment = new Compartment();
 
-function fontExtension(s: EditorSettings): Extension {
-  const px = s.fontSize * s.zoom / 100;
-  return EditorView.theme({ ".cm-scroller": { fontSize: `${px}px`, fontFamily: s.fontFamily,
-    fontVariantLigatures: s.ligatures ? "normal" : "none" } });
-}
+// Font size/family/ligatures are applied as :root CSS variables by
+// applyAppearance() in settings.ts — see the note in theme.ts.
 function indentFor(s: EditorSettings, doc = "", filename: string | null = null): { size: number; spaces: boolean } {
   const ext = filename?.split(".").pop()?.toLowerCase() ?? "";
   for (const entry of s.indentOverrides.split(",")) {
@@ -95,7 +91,6 @@ function spellCheckExtension(s: EditorSettings): Extension {
 /** Compartment effects to apply changed Editor Settings to a state/view. */
 export function editorSettingsEffects(s: EditorSettings, doc = "", filename: string | null = null) {
   return [
-    fontCompartment.reconfigure(fontExtension(s)),
     tabCompartment.reconfigure(tabExtension(s, doc, filename)),
     lineNumberCompartment.reconfigure(lineNumberExtension(s)),
     aidCompartment.reconfigure(aidExtension(s)),
@@ -147,6 +142,11 @@ function baseExtensions(cb: EditorCallbacks): Extension {
     rectangularSelection(),
     crosshairCursor(),
     highlightActiveLine(),
+    // Install the search state up front. Left to load lazily (on the first
+    // openSearchPanel) a setSearchQuery effect dispatched before that would be
+    // silently dropped, so Find Next did nothing until the panel had been
+    // opened once — see ensureSearchQuery() in main.ts.
+    search(),
     highlightSelectionMatches(),
     keymap.of([
       ...closeBracketsKeymap,
@@ -193,7 +193,6 @@ export function makeState(
       EditorState.readOnly.of(readOnly),
       languageCompartment.of(lang.extension),
       wrapCompartment.of(wrapEnabled ? EditorView.lineWrapping : []),
-      fontCompartment.of(fontExtension(s)),
       tabCompartment.of(tabExtension(s, doc, filename)),
       lineNumberCompartment.of(lineNumberExtension(s)),
       aidCompartment.of(aidExtension(s)),

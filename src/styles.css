@@ -16,6 +16,13 @@
   --accent: #0a63c9;
   --tab-active-bg: #ffffff;
   --tab-inactive-bg: #e4e4e4;
+
+  /* Editor font — overwritten from Editor Settings by applyAppearance().
+     Declared here so the editor still has a sane font before boot runs. */
+  --kr-font-size: 13px;
+  --kr-font-family: "SF Mono", "JetBrains Mono", Menlo, Monaco, "Courier New",
+    monospace;
+  --kr-ligatures: none;
 }
 
 html,
@@ -169,6 +176,20 @@ body {
 
 .ruler-canvas {
   display: block;
+}
+
+/* Hidden run the ruler measures the editor character width from — it must
+   carry exactly the editor's font (see --kr-font-* in theme.ts). */
+.ruler-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+  font-family: var(--kr-font-family);
+  font-size: var(--kr-font-size);
+  font-variant-ligatures: var(--kr-ligatures);
 }
 
 /* --- editor host --- */
@@ -767,6 +788,22 @@ body.resizing-sidebar, body.resizing-sidebar * { cursor: col-resize !important; 
   border-radius: 10px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   padding: 18px 20px;
+}
+
+.about-modal {
+  width: 420px;
+}
+.about-modal p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.about-modal .about-version {
+  color: var(--text-dim);
+  margin-top: -6px;
+}
+.about-modal .about-stack {
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .modal h2 {

@@ -5,14 +5,27 @@
 
 import { EditorView } from "@codemirror/view";
 
+const PROBE_CHARS = 40;
+
 export class Ruler {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  /** Hidden text run used to measure the editor's character width. */
+  private probe: HTMLSpanElement;
 
   constructor(private host: HTMLElement, private view: EditorView) {
     this.canvas = document.createElement("canvas");
     this.canvas.className = "ruler-canvas";
     this.host.appendChild(this.canvas);
+    // CodeMirror only refreshes `view.defaultCharacterWidth` on its own lazy
+    // measure cycle, so right after a zoom/font change it is a step stale and
+    // the ruler would draw on the old grid. Measure the width ourselves from a
+    // hidden run styled with the same --kr-font-* variables the editor uses.
+    this.probe = document.createElement("span");
+    this.probe.className = "ruler-probe";
+    this.probe.setAttribute("aria-hidden", "true");
+    this.probe.textContent = "0".repeat(PROBE_CHARS);
+    this.host.appendChild(this.probe);
     this.ctx = this.canvas.getContext("2d")!;
 
     this.view.scrollDOM.addEventListener("scroll", () => this.draw(), {
@@ -44,7 +57,10 @@ export class Ruler {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const charWidth = this.view.defaultCharacterWidth || 8;
+    const charWidth =
+      this.probe.getBoundingClientRect().width / PROBE_CHARS ||
+      this.view.defaultCharacterWidth ||
+      8;
     const hostRect = this.host.getBoundingClientRect();
     const scRect = this.view.scrollDOM.getBoundingClientRect();
     const contentRect = this.view.contentDOM.getBoundingClientRect();

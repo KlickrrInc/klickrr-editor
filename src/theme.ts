@@ -47,10 +47,14 @@ export const classicEditorTheme = EditorView.theme(
       backgroundColor: palette.background,
       height: "100%",
     },
+    // Font face/size come from Editor Settings via CSS custom properties on
+    // :root (see applyAppearance). They must NOT be hardcoded here — a literal
+    // value in this base theme has the same specificity as the settings rule
+    // but is emitted later in the sheet, which would silently win and make the
+    // font-size / font-family / zoom settings dead.
     ".cm-content": {
       caretColor: palette.caret,
-      fontFamily:
-        "'SF Mono', 'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
+      fontFamily: "var(--kr-font-family)",
     },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: palette.caret },
     "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
@@ -69,7 +73,12 @@ export const classicEditorTheme = EditorView.theme(
     },
     ".cm-foldGutter .cm-gutterElement": { color: "#a0a0a0" },
     ".cm-lineNumbers .cm-gutterElement": { padding: "0 6px 0 12px" },
-    ".cm-scroller": { fontSize: "13px", lineHeight: "1.5" },
+    ".cm-scroller": {
+      fontSize: "var(--kr-font-size)",
+      fontFamily: "var(--kr-font-family)",
+      fontVariantLigatures: "var(--kr-ligatures)",
+      lineHeight: "1.5",
+    },
     ".cm-matchingBracket, .cm-nonmatchingBracket": {
       backgroundColor: "#e3edfb",
       outline: "1px solid #9cc0f0",

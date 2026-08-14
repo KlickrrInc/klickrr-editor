@@ -15,6 +15,7 @@ import {
 import { loadTools } from "./tools";
 import type { UserTool } from "./tools";
 import { effectiveAccel } from "./keymap";
+import { APP_NAME, APP_VERSION } from "./version";
 
 // While the Keyboard Shortcuts dialog records a chord, native accelerators must
 // not intercept the keys — suspend them for the duration.
@@ -135,6 +136,7 @@ export interface AppMenuActions {
   gitStatus: () => void;
   gitDiff: () => void;
   newWindow: () => void;
+  closeWindow: () => void;
   quickLook: () => void;
   installLoginItem: () => void;
   installFinderAction: () => void;
@@ -207,16 +209,17 @@ export async function setupAppMenu(
       text: "Klickrr - Edit",
       items: [
         await PredefinedMenuItem.new({
-          item: { About: { name: "Klickrr - Edit", version: "0.1.0" } },
+          item: { About: { name: APP_NAME, version: APP_VERSION } },
         }),
         await sep(),
         await MenuItem.new({
           text: "Editor Settings…",
+          accelerator: accel("app.settings"),
           action: actions.configureSettings,
         }),
         await MenuItem.new({
           text: "Keyboard Shortcuts…",
-          accelerator: acceleratorsSuspended ? undefined : "CmdOrCtrl+,",
+          accelerator: accel("app.keys"),
           action: actions.configureKeys,
         }),
         await MenuItem.new({ text: "Custom Languages…", action: actions.configureLanguages }),
@@ -251,7 +254,7 @@ export async function setupAppMenu(
         await sep(),
         await MenuItem.new({ text: "Close Tab", accelerator: accel("file.closeTab"), action: actions.closeTab }),
         await MenuItem.new({ text: "Close All", accelerator: accel("file.closeAll"), action: actions.closeAll }),
-        await MenuItem.new({ text: "Reopen Closed Tab", accelerator: "Shift+CmdOrCtrl+T", action: actions.reopenClosed }),
+        await MenuItem.new({ text: "Reopen Closed Tab", accelerator: accel("file.reopenClosed"), action: actions.reopenClosed }),
       ],
     });
 
@@ -278,7 +281,7 @@ export async function setupAppMenu(
         await MenuItem.new({ text: "Paste as Plain Text", action: actions.pastePlain }),
         await MenuItem.new({ text: "Clipboard History…", action: actions.clipboardHistory }),
         await MenuItem.new({ text: "Share Selection…", action: actions.shareSelection }),
-        await MenuItem.new({ text: "Select All Occurrences", accelerator: "Shift+CmdOrCtrl+L", action: actions.selectAllOccurrences }),
+        await MenuItem.new({ text: "Select All Occurrences", accelerator: accel("edit.selectAllOccurrences"), action: actions.selectAllOccurrences }),
         await sep(),
         await MenuItem.new({ text: "Convert Tabs to Spaces", action: actions.tabsToSpaces }),
         await MenuItem.new({ text: "Convert Spaces to Tabs", action: actions.spacesToTabs }),
@@ -299,14 +302,14 @@ export async function setupAppMenu(
         await MenuItem.new({ text: "Go to Line…", accelerator: accel("search.gotoLine"), action: actions.gotoLine }),
         await MenuItem.new({ text: "Go to Column…", action: actions.gotoColumn }),
         await MenuItem.new({ text: "Go to Byte Offset…", action: actions.gotoByte }),
-        await MenuItem.new({ text: "Jump to Matching Bracket/Tag", accelerator: "CmdOrCtrl+Shift+\\", action: actions.matchingPair }),
-        await MenuItem.new({ text: "Previous Location", accelerator: "Control+-", action: actions.locationBack }),
-        await MenuItem.new({ text: "Next Location", accelerator: "Control+Shift+-", action: actions.locationForward }),
+        await MenuItem.new({ text: "Jump to Matching Bracket/Tag", accelerator: accel("search.matchingPair"), action: actions.matchingPair }),
+        await MenuItem.new({ text: "Previous Location", accelerator: accel("search.locationBack"), action: actions.locationBack }),
+        await MenuItem.new({ text: "Next Location", accelerator: accel("search.locationForward"), action: actions.locationForward }),
         await sep(),
-        await MenuItem.new({ text: "Find in Files…", accelerator: "CmdOrCtrl+Shift+F", action: actions.findInFiles }),
-        await MenuItem.new({ text: "Replace in Files…", accelerator: "CmdOrCtrl+Shift+H", action: actions.replaceInFiles }),
+        await MenuItem.new({ text: "Find in Files…", accelerator: accel("search.findInFiles"), action: actions.findInFiles }),
+        await MenuItem.new({ text: "Replace in Files…", accelerator: accel("search.replaceInFiles"), action: actions.replaceInFiles }),
         await MenuItem.new({ text: "Undo Last Replace in Files", action: actions.undoReplaceInFiles }),
-        await MenuItem.new({ text: "Quick Open…", accelerator: "CmdOrCtrl+E", action: actions.quickOpen }),
+        await MenuItem.new({ text: "Quick Open…", accelerator: accel("search.quickOpen"), action: actions.quickOpen }),
       ],
     });
 
@@ -316,7 +319,7 @@ export async function setupAppMenu(
         await toggle("Sidebar", st.sidebarVisible, actions.toggleSidebar, "view.sidebar"),
         await toggle("Link Sidebar with Editor", st.sidebarLinked, actions.toggleSidebarLink),
         await toggle("Output Pane", st.outputVisible, actions.toggleOutput, "view.output"),
-        await toggle("Terminal", st.terminalVisible, actions.toggleTerminal),
+        await toggle("Terminal", st.terminalVisible, actions.toggleTerminal, "view.terminal"),
         await sep(),
         await toggle("Word Wrap", st.wrapOn, actions.toggleWrap, "view.wrap"),
         await toggle("Hex View", st.hexOn, actions.toggleHex, "view.hex"),
@@ -326,15 +329,15 @@ export async function setupAppMenu(
         await MenuItem.new({ text: "Undo Hex Edit", action: actions.undoHex }),
         await MenuItem.new({ text: "Redo Hex Edit", action: actions.redoHex }),
         await MenuItem.new({ text: "Save Hex Edits…", action: actions.saveHex }),
-        await toggle("Integrated Preview", st.previewOn, actions.togglePreview),
-        await toggle("Minimap", st.minimapOn, actions.toggleMinimap),
+        await toggle("Integrated Preview", st.previewOn, actions.togglePreview, "view.preview"),
+        await toggle("Minimap", st.minimapOn, actions.toggleMinimap, "view.minimap"),
         await CheckMenuItem.new({ text: "Split Vertically", checked: st.splitOn && st.splitVertical, action: actions.splitVertical }),
         await CheckMenuItem.new({ text: "Split Horizontally", checked: st.splitOn && !st.splitVertical, action: actions.splitHorizontal }),
         await CheckMenuItem.new({ text: "Synchronize Split Scrolling", checked: st.syncSplitScroll, action: actions.syncSplitScroll }),
         await sep(),
-        await MenuItem.new({ text: "Zoom In", accelerator: "CmdOrCtrl+=", action: () => actions.zoom(10) }),
-        await MenuItem.new({ text: "Zoom Out", accelerator: "CmdOrCtrl+-", action: () => actions.zoom(-10) }),
-        await MenuItem.new({ text: "Actual Size", accelerator: "CmdOrCtrl+0", action: () => actions.zoom(0) }),
+        await MenuItem.new({ text: "Zoom In", accelerator: accel("view.zoomIn"), action: () => actions.zoom(10) }),
+        await MenuItem.new({ text: "Zoom Out", accelerator: accel("view.zoomOut"), action: () => actions.zoom(-10) }),
+        await MenuItem.new({ text: "Actual Size", accelerator: accel("view.actualSize"), action: () => actions.zoom(0) }),
       ],
     });
 
@@ -345,9 +348,9 @@ export async function setupAppMenu(
         await MenuItem.new({ text: "Fold Selection", action: actions.foldSelection }),
       ] }),
       await Submenu.new({ text: "Bookmarks", items: [
-        await MenuItem.new({ text: "Toggle Bookmark", accelerator: "CmdOrCtrl+F2", action: actions.toggleBookmark }),
-        await MenuItem.new({ text: "Next Bookmark", accelerator: "F2", action: actions.nextBookmark }),
-        await MenuItem.new({ text: "Previous Bookmark", accelerator: "Shift+F2", action: actions.previousBookmark }),
+        await MenuItem.new({ text: "Toggle Bookmark", accelerator: accel("document.toggleBookmark"), action: actions.toggleBookmark }),
+        await MenuItem.new({ text: "Next Bookmark", accelerator: accel("document.nextBookmark"), action: actions.nextBookmark }),
+        await MenuItem.new({ text: "Previous Bookmark", accelerator: accel("document.previousBookmark"), action: actions.previousBookmark }),
         await sep(),
         await MenuItem.new({ text: "Delete Bookmarked Lines", action: actions.deleteBookmarked }),
         await MenuItem.new({ text: "Delete Unbookmarked Lines", action: actions.deleteUnbookmarked }),
@@ -414,7 +417,7 @@ export async function setupAppMenu(
     const toolsMenu = await Submenu.new({
       text: "Tools",
       items: [
-        await MenuItem.new({ text: "Commands…", accelerator: "CmdOrCtrl+Shift+P", action: actions.commandPalette }),
+        await MenuItem.new({ text: "Commands…", accelerator: accel("tools.commandPalette"), action: actions.commandPalette }),
         await MenuItem.new({ text: "Notes & Scratchpad…", action: actions.notes }),
         await sep(),
         await MenuItem.new({ text: "Terminal Here", action: actions.terminalHere }),
@@ -424,14 +427,16 @@ export async function setupAppMenu(
         await sep(),
         await MenuItem.new({ text: "Configure User Tools…", action: actions.configureTools }),
         await sep(),
-        await CheckMenuItem.new({ text: "Record Macro", checked: st.recordingMacro, accelerator: "Alt+CmdOrCtrl+M", action: actions.toggleMacroRecording }),
-        await MenuItem.new({ text: "Replay Last Macro", accelerator: "Alt+CmdOrCtrl+R", action: actions.replayMacro }),
-        await MenuItem.new({ text: "Repeat Last Transformation", accelerator: "CmdOrCtrl+Option+Space", action: actions.repeatLastCommand }),
+        await CheckMenuItem.new({ text: "Record Macro", checked: st.recordingMacro, accelerator: accel("tools.recordMacro"), action: actions.toggleMacroRecording }),
+        await MenuItem.new({ text: "Replay Last Macro", accelerator: accel("tools.replayMacro"), action: actions.replayMacro }),
+        await MenuItem.new({ text: "Repeat Last Transformation", accelerator: accel("tools.repeatLast"), action: actions.repeatLastCommand }),
       ],
     });
 
     const projectMenu = await Submenu.new({ text: "Project", items: [
-      await MenuItem.new({ text: "Quick Open…", accelerator: "CmdOrCtrl+P", action: actions.quickOpen }),
+      // Duplicates of the Search-menu entries — the accelerators live there, so
+      // these carry none (the old ⌘P here collided with File → Print).
+      await MenuItem.new({ text: "Quick Open…", action: actions.quickOpen }),
       await MenuItem.new({ text: "Find in Files…", action: actions.findInFiles }),
       await sep(), await MenuItem.new({ text: "Project Workspaces…", action: actions.projectManager }),
       await MenuItem.new({ text: "Project Configuration…", action: actions.configureProject }),
@@ -444,11 +449,14 @@ export async function setupAppMenu(
     const windowMenu = await Submenu.new({
       text: "Window",
       items: [
-        await MenuItem.new({ text: "New Window", accelerator: "Shift+CmdOrCtrl+N", action: actions.newWindow }),
+        await MenuItem.new({ text: "New Window", accelerator: accel("window.newWindow"), action: actions.newWindow }),
         await PredefinedMenuItem.new({ item: "Minimize" }),
         await PredefinedMenuItem.new({ item: "Maximize" }),
         await sep(),
-        await PredefinedMenuItem.new({ item: "CloseWindow" }),
+        // A custom item rather than PredefinedMenuItem "CloseWindow": that one
+        // hardcodes ⌘W, which shadowed File → Close Tab and closed the whole
+        // window instead of the tab.
+        await MenuItem.new({ text: "Close Window", accelerator: accel("window.closeWindow"), action: actions.closeWindow }),
         await sep(), await MenuItem.new({ text: "Quick Look Active File", action: actions.quickLook }),
         await MenuItem.new({ text: "Install Reopen at Login…", action: actions.installLoginItem }),
         await MenuItem.new({ text: "Install Finder Quick Action…", action: actions.installFinderAction }),

@@ -4,7 +4,15 @@
 
 import { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
-import { openSearchPanel, findNext, findPrevious, gotoLine } from "@codemirror/search";
+import {
+  openSearchPanel,
+  findNext,
+  findPrevious,
+  gotoLine,
+  getSearchQuery,
+  setSearchQuery,
+  SearchQuery,
+} from "@codemirror/search";
 import { undo, redo } from "@codemirror/commands";
 import { foldAll, unfoldAll, foldEffect, matchBrackets } from "@codemirror/language";
 import { invoke } from "@tauri-apps/api/core";
@@ -36,7 +44,7 @@ import { HexView } from "./hexview";
 import { setupAppMenu, refreshAppMenu, setAcceleratorsSuspended } from "./appmenu";
 import type { AppMenuActions, AppMenuState } from "./appmenu";
 import { openKeymapConfig } from "./keymap";
-import { cancelTool, runToolStreaming, openToolsConfig, needsFile } from "./tools";
+import { cancelTool, runToolStreaming, openToolsConfig, needsFile, loadTools } from "./tools";
 import type { UserTool, ToolContext } from "./tools";
 import {
   pickOpenPath,
@@ -60,12 +68,14 @@ import type { LineEnding, TextEncoding } from "./fileops";
 import type { EditorConfigResult } from "./fileops";
 import { addRecent, clearRecents, loadSession, recentFiles, removeRecent, saveSession } from "./persistence";
 import { openFindInFiles, openQuickOpen, openReplaceInFiles } from "./workspace-dialogs";
-import { deleteMarkedLines, nextBookmark, restoreBookmarks, toggleBookmark } from "./bookmarks";
+import { bookmarkPositions, deleteMarkedLines, nextBookmark, restoreBookmarks, toggleBookmark } from "./bookmarks";
 import { selectSelectionMatches } from "@codemirror/search";
 import { marked } from "marked";
 import { openTemplates } from "./templates";
 import { openProjectConfig, openProjectManager } from "./project";
+import { APP_VERSION } from "./version";
 import { openClipboardHistory, openCommandPalette, openExtractMatches, openGitPanel, openNotes, openRegexPlayground, openUnicodeInspector, rememberClipboard } from "./productivity";
+import type { PaletteCommand } from "./productivity";
 
 // --- DOM handles -----------------------------------------------------------
 const host = document.getElementById("editor-host")!;
@@ -78,6 +88,7 @@ const statusPos = document.getElementById("status-pos")!;
 const statusLang = document.getElementById("status-lang")!;
 const statusPath = document.getElementById("status-path")!;
 const statusFormat = document.getElementById("status-format")!;
+const statusZoom = document.getElementById("status-zoom")!;
 const previewPane = document.getElementById("preview-pane")!;
 const previewFrame = document.getElementById("preview-frame") as HTMLIFrameElement;
 
@@ -344,7 +355,48 @@ function openGotoLineOnce(): void {
   }
   gotoLine(view);
 }
-function foldSelection(): void { const sel = view.state.selection.main; if (!sel.empty) view.dispatch({ effects: foldEffect.of({ from: sel.from, to: sel.to }) }); }
+function foldSelection(): void {
+  const sel = view.state.selection.main;
+  if (sel.empty) { output.info("Select the lines to fold first."); return; }
+  view.dispatch({ effects: foldEffect.of({ from: sel.from, to: sel.to }) });
+}
+
+/** Find Next/Previous work off the search panel's query. If the user never
+ *  opened the panel there is no query yet, so seed one from the selection (or
+ *  the word under the cursor) instead of silently doing nothing. */
+function ensureSearchQuery(): boolean {
+  if (getSearchQuery(view.state).search) return true;
+  const sel = view.state.selection.main;
+  const range = sel.empty ? view.state.wordAt(sel.head) : sel;
+  const term = range ? view.state.sliceDoc(range.from, range.to) : "";
+  if (!term) { view.focus(); openSearchPanel(view); return false; }
+  view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: term })) });
+  return true;
+}
+
+/** Open the search panel with the caret in the replace field, so "Replace…"
+ *  actually lands somewhere different from "Find…". */
+function openReplacePanel(): void {
+  view.focus();
+  openSearchPanel(view);
+  const focusReplace = () => {
+    const input = view.dom.querySelector<HTMLInputElement>('.cm-search input[name="replace"]');
+    if (input) { input.focus(); input.select(); }
+  };
+  focusReplace();
+  requestAnimationFrame(focusReplace);
+}
+
+function selectAllOccurrences(): void {
+  const sel = view.state.selection.main;
+  if (sel.empty) {
+    const word = view.state.wordAt(sel.head);
+    if (!word) { output.info("Put the cursor in a word (or select text) first."); return; }
+    view.dispatch({ selection: EditorSelection.range(word.from, word.to) });
+  }
+  selectSelectionMatches(view);
+  view.focus();
+}
 
 // --- clipboard (toolbar buttons; the menu uses native predefined items) ----
 async function copySelection(): Promise<void> {
@@ -450,6 +502,8 @@ function applyEditorSettings(): void {
   snapshotActive();
   for (const tab of tabs.tabs) tab.state = tab.state.update({ effects: editorSettingsEffects(s, tab.state.doc.toString(), tab.path) }).state;
   mountActive();
+  statusZoom.textContent = s.zoom === 100 ? "" : `${s.zoom}%`;
+  remeasureFont();
 }
 
 // --- integrated terminal ---------------------------------------------------
@@ -521,6 +575,9 @@ async function runUserTool(tool: UserTool): Promise<void> {
 
 // --- hex viewer ------------------------------------------------------------
 async function renderHex(): Promise<void> {
+  // Reloading would silently throw away pending byte edits (Save Hex Edits /
+  // Undo Hex Edit still need them), so leave an edited dump alone.
+  if (hexView.hasEdits) return;
   const tab = tabs.active;
   if (tab?.path && !tab.dirty) {
     const fb = await readFileBytes(tab.path, 262144);
@@ -549,9 +606,28 @@ async function toggleHex(): Promise<void> {
   }
 }
 async function searchHex(): Promise<void> { if (!hexOn) await toggleHex(); const q = await promptText("Search Hex", { label: "Text or space-separated bytes (e.g. 48 65 6c 6c 6f)" }); if (!q) return; const at = hexView.search(q); output.info(at >= 0 ? `Hex match at 0x${at.toString(16).padStart(8, "0")}` : "No hex match found."); }
-async function configureHexRows(): Promise<void> { const value = await promptText("Hex Bytes per Row", { value: "16" }); if (value) hexView.setBytesPerRow(Number(value)); }
-async function editHexByte(): Promise<void> { if (!hexOn) await toggleHex(); const offset = await promptText("Edit Hex Byte", { label: "Offset (decimal or 0xhex)", value: "0x0" }); if (!offset) return; const value = await promptText("Edit Hex Byte", { label: "New byte (hex)", value: "00" }); if (!value) return; if (!hexView.editByte(Number(offset), Number.parseInt(value, 16))) output.info("Invalid offset or byte value."); }
-async function saveHexEdits(): Promise<void> { const tab = tabs.active; if (!tab?.path || !hexView.hasEdits) return; if (!(await confirm(`Overwrite “${tab.title}” with the edited bytes? A .bak backup will be created.`, { title: "Save Hex Edits", kind: "warning" }))) return; try { await writeFileBytes(tab.path, hexView.editedBytes(), true); hexView.markSaved(); await revertActive(); } catch (e) { output.info(String(e)); } }
+async function configureHexRows(): Promise<void> {
+  const value = await promptText("Hex Bytes per Row", { label: "Bytes per row (4–64)", value: String(hexView.bytesPerRowValue) });
+  if (value == null || value === "") return;
+  const n = Number(value);
+  if (!Number.isFinite(n)) { output.info("Enter a number between 4 and 64."); return; }
+  hexView.setBytesPerRow(n);
+}
+async function editHexByte(): Promise<void> {
+  if (!hexOn) await toggleHex();
+  const offsetText = await promptText("Edit Hex Byte", { label: "Offset (decimal or 0xhex)", value: "0x0" });
+  if (!offsetText) return;
+  const valueText = await promptText("Edit Hex Byte", { label: "New byte (two hex digits)", value: "00" });
+  if (!valueText) return;
+  const offset = Number(offsetText.trim());
+  const value = /^[0-9a-f]{1,2}$/i.test(valueText.trim()) ? Number.parseInt(valueText.trim(), 16) : NaN;
+  if (!hexView.editByte(offset, value)) { output.info(`Invalid offset or byte value (offset must be 0–${Math.max(0, hexView.editedBytes().length - 1)}, byte 00–FF).`); return; }
+  output.info(`Set byte 0x${offset.toString(16)} to 0x${value.toString(16).padStart(2, "0")}. Use Save Hex Edits… to write it to disk.`);
+}
+async function saveHexEdits(): Promise<void> { const tab = tabs.active;
+  if (!tab?.path) { output.info("Save the file to disk before writing hex edits."); return; }
+  if (!hexView.hasEdits) { output.info("No hex edits to save — use Edit Hex Byte… first."); return; }
+  if (!(await confirm(`Overwrite “${tab.title}” with the edited bytes? A .bak backup will be created.`, { title: "Save Hex Edits", kind: "warning" }))) return; try { await writeFileBytes(tab.path, hexView.editedBytes(), true); hexView.markSaved(); await revertActive(); } catch (e) { output.info(String(e)); } }
 
 function toggleSidebar(): void {
   sidebarEl.classList.toggle("collapsed");
@@ -624,6 +700,7 @@ function mountActive(): void {
   refreshOutlineNow();
   syncSidebarToActive();
   refreshToolbars();
+  renderMinimap();
   if (hexOn) void renderHex();
   if (splitOn && splitView) splitView.setState(makeState(tab.state.doc.toString(), tab.path, { onChange: () => {
     if (syncingSplit || !splitView) return; syncingSplit = true; view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: splitView.state.doc.toString() } }); syncingSplit = false;
@@ -677,31 +754,34 @@ function closeChoice(title: string): Promise<CloseChoice> {
   });
 }
 
-async function closeTab(id: number): Promise<void> {
+/** Close a tab. Returns false if the user cancelled (or the save failed), so
+ *  callers like Close All can stop instead of blowing past the cancel. */
+async function closeTab(id: number): Promise<boolean> {
   const tab = tabs.get(id);
-  if (!tab) return;
+  if (!tab) return true;
   if (tab.dirty) {
     const choice = await closeChoice(tab.title);
-    if (choice === "cancel") return;
+    if (choice === "cancel") return false;
     if (choice === "save") {
       switchTo(tab.id);
-      if (!(await saveActive())) return;
+      if (!(await saveActive())) return false;
     }
   }
   const wasActive = tabs.activeId === id;
   tabs.remove(id);
   if (tabs.tabs.length === 0) {
     newTab(); // never leave the window empty
-    return;
+    return true;
   }
   if (wasActive) mountActive();
   else tabs.render();
   scheduleSessionSave();
+  return true;
 }
 
 async function closeAll(): Promise<void> {
   for (const id of tabs.tabs.map((t) => t.id)) {
-    await closeTab(id);
+    if (!(await closeTab(id))) return; // cancelled — leave the rest open
   }
 }
 
@@ -877,12 +957,38 @@ function transformSelection(transform: (text: string) => string): void {
   const to = sel.empty ? view.state.doc.lineAt(sel.head).to : sel.to;
   view.dispatch({ changes: { from, to, insert: transform(view.state.sliceDoc(from, to)) } }); view.focus();
 }
+/** Line-oriented transform: the full lines touched by the selection, or the
+ *  whole document when nothing is selected. (transformSelection falls back to
+ *  the *current line*, which makes multi-line commands like Sort a no-op.) */
+function transformLines(transform: (text: string) => string): void {
+  const sel = view.state.selection.main;
+  const from = sel.empty ? 0 : view.state.doc.lineAt(sel.from).from;
+  const to = sel.empty ? view.state.doc.length : view.state.doc.lineAt(sel.to).to;
+  const text = view.state.sliceDoc(from, to);
+  const changed = transform(text);
+  if (changed !== text) view.dispatch({ changes: { from, to, insert: changed } });
+  view.focus();
+}
 function changeCase(mode: "upper" | "lower"): void { transformSelection((s) => mode === "upper" ? s.toUpperCase() : s.toLowerCase()); }
 function trimTrailing(): void { replaceDocument((s) => s.split("\n").map((l) => l.replace(/[ \t]+$/g, "")).join("\n")); }
-function sortLines(): void { transformSelection((s) => s.split("\n").sort((a, b) => a.localeCompare(b)).join("\n")); }
-function uniqueLines(): void { transformSelection((s) => [...new Set(s.split("\n"))].join("\n")); }
-function joinLines(): void { transformSelection((s) => s.replace(/\s*\n\s*/g, " ")); }
-function splitLines(): void { transformSelection((s) => s.split("\n").flatMap((line) => {
+function sortLines(): void { transformLines((s) => s.split("\n").sort((a, b) => a.localeCompare(b)).join("\n")); }
+function uniqueLines(): void { transformLines((s) => [...new Set(s.split("\n"))].join("\n")); }
+/** With a selection, join every selected line; with none, join the current
+ *  line to the one below it (the usual editor behavior). */
+function joinLines(): void {
+  const sel = view.state.selection.main;
+  if (!sel.empty) { transformLines((s) => s.replace(/[ \t]*\n[ \t]*/g, " ")); return; }
+  const line = view.state.doc.lineAt(sel.head);
+  if (line.number >= view.state.doc.lines) return;
+  const next = view.state.doc.line(line.number + 1);
+  const lead = next.text.length - next.text.trimStart().length;
+  view.dispatch({
+    changes: { from: line.to, to: next.from + lead, insert: next.text.trim() ? " " : "" },
+    selection: EditorSelection.cursor(line.to),
+  });
+  view.focus();
+}
+function splitLines(): void { transformLines((s) => s.split("\n").flatMap((line) => {
   const out: string[] = []; let rest = line; while (rest.length > 80) { let at = rest.lastIndexOf(" ", 80); if (at < 1) at = 80; out.push(rest.slice(0, at)); rest = rest.slice(at).trimStart(); } out.push(rest); return out;
 }).join("\n")); }
 function tabsToSpaces(): void { const n = loadSettings().tabSize; replaceDocument((s) => s.replace(/\t/g, " ".repeat(n))); }
@@ -902,12 +1008,34 @@ async function multilineRegex(): Promise<void> { const pattern = await promptTex
   replaceDocument((source) => source.replace(re, replacement)); }
 
 async function copyActivePath(relative = false): Promise<void> {
-  const path = tabs.active?.path; if (!path) return;
+  const path = tabs.active?.path;
+  if (!path) { output.info("Save the file first — an unsaved buffer has no path to copy."); return; }
   const value = relative ? path.replace(sidebar.getRoot().replace(/\/$/, "") + "/", "") : path;
-  await navigator.clipboard.writeText(value);
+  try { await navigator.clipboard.writeText(value); output.info(`Copied: ${value}`); }
+  catch (e) { output.info("Copy failed: " + String(e)); }
 }
 
-function zoom(delta: number): void { const s = loadSettings(); s.zoom = delta === 0 ? 100 : Math.max(50, Math.min(200, s.zoom + delta)); saveSettings(s); applyEditorSettings(); }
+/** Re-measure after the editor font changed: CodeMirror caches character
+ *  metrics, and the ruler/minimap are drawn from them. */
+function remeasureFont(): void {
+  const redraw = { read: () => 0, write: () => { ruler.sync(); renderMinimap(); } };
+  view.requestMeasure(redraw);
+  splitView?.requestMeasure();
+}
+
+/** View → Zoom In / Zoom Out / Actual Size (delta 0 resets to 100%). */
+function zoom(delta: number): void {
+  const s = loadSettings();
+  const next = delta === 0 ? 100 : Math.max(50, Math.min(200, s.zoom + delta));
+  if (next === s.zoom) return;
+  s.zoom = next;
+  saveSettings(s);
+  // Font size is a :root CSS variable, so no per-tab state rebuild is needed —
+  // every view (including the split pane) picks it up immediately.
+  applyAppearance(s);
+  remeasureFont();
+  statusZoom.textContent = next === 100 ? "" : `${next}%`;
+}
 
 let checkingExternal = false;
 async function checkExternalChanges(): Promise<void> {
@@ -944,6 +1072,29 @@ async function toggleLogWatch(): Promise<void> {
 window.setInterval(() => { for (const tab of tabs.tabs) if (tab.logWatch) void refreshLogTab(tab); }, 1000);
 async function setLogFilter(): Promise<void> { const tab = tabs.active; if (!tab?.logWatch) { output.info("Enable Follow File as Log first."); return; } const value = await promptText("Log Filter", { label: "Show lines containing (empty clears)", value: tab.logFilter ?? "" }); tab.logFilter = value ?? ""; tab.diskSize = -1; await refreshLogTab(tab); }
 
+/** Help → About: a real dialog rather than a line in the output pane. */
+function showAbout(): void {
+  const overlay = document.createElement("div"); overlay.className = "modal-overlay";
+  const modal = document.createElement("div"); modal.className = "modal about-modal";
+  const h = document.createElement("h2"); h.textContent = "Klickrr - Edit";
+  const version = document.createElement("p"); version.className = "about-version"; version.textContent = `Version ${APP_VERSION}`;
+  const blurb = document.createElement("p");
+  blurb.textContent = "A lightweight text and code editor for macOS — quick to launch, small on disk, with a crisp classic color scheme.";
+  const stack = document.createElement("p"); stack.className = "about-stack";
+  stack.textContent = "Built with Tauri 2, Vite and CodeMirror 6.";
+  const actionsRow = document.createElement("div"); actionsRow.className = "modal-actions";
+  const copy = document.createElement("button"); copy.textContent = "Copy Version Info";
+  copy.addEventListener("click", () => void navigator.clipboard.writeText(`Klickrr - Edit ${APP_VERSION} — Tauri 2 + CodeMirror 6 (${navigator.userAgent})`));
+  const close = document.createElement("button"); close.textContent = "Close"; close.className = "primary";
+  close.addEventListener("click", () => overlay.remove());
+  actionsRow.append(copy, close);
+  modal.append(h, version, blurb, stack, actionsRow);
+  overlay.appendChild(modal);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  close.focus();
+}
+
 function printDoc(): void {
   const area = document.getElementById("print-area")!;
   area.textContent = view.state.doc.toString();
@@ -975,17 +1126,14 @@ const actions: AppMenuActions = {
     openSearchPanel(view);
   },
   findNext: () => {
-    findNext(view);
+    if (ensureSearchQuery()) findNext(view);
     view.focus();
   },
   findPrev: () => {
-    findPrevious(view);
+    if (ensureSearchQuery()) findPrevious(view);
     view.focus();
   },
-  replace: () => {
-    view.focus();
-    openSearchPanel(view);
-  },
+  replace: () => openReplacePanel(),
   gotoLine: () => openGotoLineOnce(),
   gotoColumn: () => void gotoColumn(),
   gotoByte: () => void gotoByteOffset(),
@@ -995,12 +1143,20 @@ const actions: AppMenuActions = {
   foldAll: () => { foldAll(view); view.focus(); },
   unfoldAll: () => { unfoldAll(view); view.focus(); },
   foldSelection: () => foldSelection(),
-  selectAllOccurrences: () => { selectSelectionMatches(view); view.focus(); },
+  selectAllOccurrences: () => selectAllOccurrences(),
   toggleBookmark: () => toggleBookmark(view),
   nextBookmark: () => nextBookmark(view),
   previousBookmark: () => nextBookmark(view, true),
-  deleteBookmarked: () => deleteMarkedLines(view, true),
-  deleteUnbookmarked: () => deleteMarkedLines(view, false),
+  deleteBookmarked: () => {
+    if (!bookmarkPositions(view.state).length) { output.info("No bookmarked lines to delete."); return; }
+    deleteMarkedLines(view, true);
+  },
+  deleteUnbookmarked: () => {
+    // With no bookmarks this would delete the entire document — almost never
+    // what the user meant by "keep the bookmarked lines".
+    if (!bookmarkPositions(view.state).length) { output.info("Set a bookmark first — with none, this would delete every line."); return; }
+    deleteMarkedLines(view, false);
+  },
   findInFiles: () => { snapshotActive(); openFindInFiles(sidebar.getRoot(), tabs.tabs.filter((t) => t.path).map((t) => ({ path: t.path!, contents: t.state.doc.toString() })), (path, line, col) => void openPath(path).then(() => jumpToPosition(line, col))); },
   replaceInFiles: () => openReplaceInFiles(sidebar.getRoot(), (paths) => { for (const tab of tabs.tabs) if (tab.path && paths.includes(tab.path) && !tab.dirty) { const active = tabs.activeId; void openPath(tab.path).then(() => revertActive()).finally(() => { if (active) switchTo(active); }); } }),
   undoReplaceInFiles: () => void undoReplaceFiles().then((count) => { output.info(`Restored ${count} file(s) from the last Replace in Files transaction.`); void checkExternalChanges(); }).catch((e) => output.info(String(e))),
@@ -1013,17 +1169,17 @@ const actions: AppMenuActions = {
   joinLines: () => repeatable(joinLines),
   splitLines: () => repeatable(splitLines),
   pastePlain: () => void pasteClipboard(),
-  htmlEscape: () => htmlEscape(),
-  htmlUnescape: () => htmlUnescape(),
-  urlEncode: () => urlTransform(false),
-  urlDecode: () => urlTransform(true),
-  formatJson: () => formatJson(),
-  formatXml: () => formatXml(),
+  htmlEscape: () => repeatable(htmlEscape),
+  htmlUnescape: () => repeatable(htmlUnescape),
+  urlEncode: () => repeatable(() => urlTransform(false)),
+  urlDecode: () => repeatable(() => urlTransform(true)),
+  formatJson: () => repeatable(formatJson),
+  formatXml: () => repeatable(formatXml),
   insertEntity: () => void insertEntity(),
   generateTable: () => void generateTable(),
   multilineRegex: () => void multilineRegex(),
-  tabsToSpaces: () => tabsToSpaces(),
-  spacesToTabs: () => spacesToTabs(),
+  tabsToSpaces: () => repeatable(tabsToSpaces),
+  spacesToTabs: () => repeatable(spacesToTabs),
   setEncoding: (v) => { setEncoding(v as TextEncoding); void refreshAppMenu(); },
   reopenEncoding: (v) => void reopenWithEncoding(v as TextEncoding),
   setLineEnding: (v) => { setLineEnding(v as LineEnding); void refreshAppMenu(); },
@@ -1081,20 +1237,7 @@ const actions: AppMenuActions = {
   installCli: () => void invoke<string>("install_cli").then((path) => output.info(`Installed mcedit at ${path}. Add ~/.local/bin to PATH if needed. Usage: mcedit file[:line[:column]]`)).catch((e) => output.info(String(e))),
   toggleMacroRecording: () => void toggleMacroRecording(),
   replayMacro: () => replayMacro(),
-  commandPalette: () => openCommandPalette([
-    { label: "New Document", category: "File", run: () => newTab() },
-    { label: "Open…", category: "File", run: () => void openFile() },
-    { label: "Save", category: "File", run: () => void saveActive() },
-    { label: "Quick Open…", category: "Project", run: () => actions.quickOpen() },
-    { label: "Find in Files…", category: "Search", run: () => actions.findInFiles() },
-    { label: "Grep Playground…", category: "Search", run: () => actions.regexPlayground() },
-    { label: "Notes & Scratchpad…", category: "Tools", run: () => actions.notes() },
-    { label: "Clipboard History…", category: "Edit", run: () => actions.clipboardHistory() },
-    { label: "Character Inspector…", category: "Document", run: () => actions.unicodeInspector() },
-    { label: "Toggle Integrated Preview", category: "View", run: () => actions.togglePreview() },
-    { label: "Toggle Terminal", category: "View", run: () => actions.toggleTerminal() },
-    { label: "Editor Settings…", category: "Application", run: () => actions.configureSettings() },
-  ]),
+  commandPalette: () => openCommandPalette(paletteCommands()),
   regexPlayground: () => { const sel = view.state.selection.main; openRegexPlayground(view.state.sliceDoc(sel.from, sel.to) || view.state.doc.toString().slice(0, 20000)); },
   clipboardHistory: () => openClipboardHistory((text) => insertAtCursor(text)),
   notes: () => openNotes(),
@@ -1106,15 +1249,128 @@ const actions: AppMenuActions = {
   gitStatus: () => void invoke<{stdout: string; stderr: string; code: number}>("git_command", { root: sidebar.getRoot(), args: ["status", "--short", "--branch"] }).then((r) => output.report("git status", r.stdout, r.stderr, r.code)).catch((e) => output.info(String(e))),
   gitDiff: () => { const path = tabs.active?.path; if (!path) return; void invoke<{stdout: string; stderr: string; code: number}>("git_command", { root: sidebar.getRoot(), args: ["diff", "--", path] }).then((r) => output.report("git diff", r.stdout, r.stderr, r.code)).catch((e) => output.info(String(e))); },
   newWindow: () => { new WebviewWindow(`editor-${Date.now()}`, { url: "index.html", title: "Klickrr - Edit", width: 1100, height: 720 }); },
+  closeWindow: () => { persistSessionNow(); void getCurrentWindow().close(); },
   quickLook: () => { const path = tabs.active?.path; if (path) void invoke("quick_look", { path }).catch((e) => output.info(String(e))); },
   installLoginItem: () => void invoke<string>("install_login_item").then((p) => output.info(`Installed login item: ${p}`)).catch((e) => output.info(String(e))),
   installFinderAction: () => void invoke<string>("install_finder_quick_action").then((p) => output.info(`Installed Finder Quick Action: ${p}`)).catch((e) => output.info(String(e))),
   insertHtml: (open, close) => wrapSelection(open, close),
-  about: () =>
-    output.info(
-      "Klickrr - Edit — a lightweight text and code editor (Tauri + CodeMirror 6)."
-    ),
+  about: () => showAbout(),
 };
+
+/** Everything the menus can do, as a flat searchable list. Built lazily so the
+ *  user tools (which change) and the accelerators are always current. */
+function paletteCommands(): PaletteCommand[] {
+  const a = actions;
+  const entries: [string, string, () => void][] = [
+    ["File", "New Document", a.newFile],
+    ["File", "New from Template…", a.newFromTemplate],
+    ["File", "Open…", a.open],
+    ["File", "Save", a.save],
+    ["File", "Save As…", a.saveAs],
+    ["File", "Save All", a.saveAll],
+    ["File", "Revert to Saved", a.revert],
+    ["File", "Compare with Disk…", a.compareWithDisk],
+    ["File", "Duplicate Document", a.duplicate],
+    ["File", "Rename…", a.rename],
+    ["File", "Print…", a.print],
+    ["File", "Close Tab", a.closeTab],
+    ["File", "Close All Tabs", a.closeAll],
+    ["File", "Reopen Closed Tab", a.reopenClosed],
+    ["Edit", "Uppercase", a.upperCase],
+    ["Edit", "Lowercase", a.lowerCase],
+    ["Edit", "Trim Trailing Whitespace", a.trimTrailing],
+    ["Edit", "Sort Lines", a.sortLines],
+    ["Edit", "Remove Duplicate Lines", a.uniqueLines],
+    ["Edit", "Join Lines", a.joinLines],
+    ["Edit", "Split Lines at Column 80", a.splitLines],
+    ["Edit", "Paste as Plain Text", a.pastePlain],
+    ["Edit", "Clipboard History…", a.clipboardHistory],
+    ["Edit", "Share Selection…", a.shareSelection],
+    ["Edit", "Select All Occurrences", a.selectAllOccurrences],
+    ["Edit", "Convert Tabs to Spaces", a.tabsToSpaces],
+    ["Edit", "Convert Spaces to Tabs", a.spacesToTabs],
+    ["Search", "Find…", a.find],
+    ["Search", "Find Next", a.findNext],
+    ["Search", "Find Previous", a.findPrev],
+    ["Search", "Replace…", a.replace],
+    ["Search", "Multiline Regex…", a.multilineRegex],
+    ["Search", "Grep Playground…", a.regexPlayground],
+    ["Search", "Extract Matches…", a.extractMatches],
+    ["Search", "Go to Line…", a.gotoLine],
+    ["Search", "Go to Column…", a.gotoColumn],
+    ["Search", "Go to Byte Offset…", a.gotoByte],
+    ["Search", "Jump to Matching Bracket/Tag", a.matchingPair],
+    ["Search", "Previous Location", a.locationBack],
+    ["Search", "Next Location", a.locationForward],
+    ["Search", "Find in Files…", a.findInFiles],
+    ["Search", "Replace in Files…", a.replaceInFiles],
+    ["Search", "Undo Last Replace in Files", a.undoReplaceInFiles],
+    ["Search", "Quick Open…", a.quickOpen],
+    ["View", "Toggle Sidebar", a.toggleSidebar],
+    ["View", "Link Sidebar with Editor", a.toggleSidebarLink],
+    ["View", "Toggle Output Pane", a.toggleOutput],
+    ["View", "Toggle Terminal", a.toggleTerminal],
+    ["View", "Toggle Word Wrap", a.toggleWrap],
+    ["View", "Toggle Hex View", a.toggleHex],
+    ["View", "Search Hex/Text…", a.searchHex],
+    ["View", "Hex Bytes per Row…", a.configureHexRows],
+    ["View", "Edit Hex Byte…", a.editHexByte],
+    ["View", "Undo Hex Edit", a.undoHex],
+    ["View", "Redo Hex Edit", a.redoHex],
+    ["View", "Save Hex Edits…", a.saveHex],
+    ["View", "Toggle Integrated Preview", a.togglePreview],
+    ["View", "Toggle Minimap", a.toggleMinimap],
+    ["View", "Split Vertically", a.splitVertical],
+    ["View", "Split Horizontally", a.splitHorizontal],
+    ["View", "Synchronize Split Scrolling", a.syncSplitScroll],
+    ["View", "Zoom In", () => a.zoom(10)],
+    ["View", "Zoom Out", () => a.zoom(-10)],
+    ["View", "Actual Size", () => a.zoom(0)],
+    ["Document", "Fold All", a.foldAll],
+    ["Document", "Unfold All", a.unfoldAll],
+    ["Document", "Fold Selection", a.foldSelection],
+    ["Document", "Toggle Bookmark", a.toggleBookmark],
+    ["Document", "Next Bookmark", a.nextBookmark],
+    ["Document", "Previous Bookmark", a.previousBookmark],
+    ["Document", "Delete Bookmarked Lines", a.deleteBookmarked],
+    ["Document", "Delete Unbookmarked Lines", a.deleteUnbookmarked],
+    ["Document", "Copy File Path", () => a.copyPath(false)],
+    ["Document", "Copy Relative Path", () => a.copyPath(true)],
+    ["Document", "Follow File as Log", a.toggleLogWatch],
+    ["Document", "Set Log Filter…", a.setLogFilter],
+    ["Document", "Character Inspector…", a.unicodeInspector],
+    ["HTML", "Entity Picker…", a.insertEntity],
+    ["HTML", "HTML Escape", a.htmlEscape],
+    ["HTML", "HTML Unescape", a.htmlUnescape],
+    ["HTML", "URL Encode", a.urlEncode],
+    ["HTML", "URL Decode", a.urlDecode],
+    ["HTML", "Format JSON", a.formatJson],
+    ["HTML", "Format XML", a.formatXml],
+    ["HTML", "Table Generator…", a.generateTable],
+    ["Tools", "Notes & Scratchpad…", a.notes],
+    ["Tools", "Terminal Here", a.terminalHere],
+    ["Tools", "Install mcedit Command…", a.installCli],
+    ["Tools", "Configure User Tools…", a.configureTools],
+    ["Tools", "Record Macro", a.toggleMacroRecording],
+    ["Tools", "Replay Last Macro", a.replayMacro],
+    ["Tools", "Repeat Last Transformation", a.repeatLastCommand],
+    ["Project", "Project Workspaces…", a.projectManager],
+    ["Project", "Project Configuration…", a.configureProject],
+    ["Project", "Git Working Copy…", a.gitPanel],
+    ["Project", "Git Status", a.gitStatus],
+    ["Project", "Diff Active File", a.gitDiff],
+    ["Window", "New Window", a.newWindow],
+    ["Window", "Quick Look Active File", a.quickLook],
+    ["Application", "Editor Settings…", a.configureSettings],
+    ["Application", "Keyboard Shortcuts…", a.configureKeys],
+    ["Application", "Custom Languages…", a.configureLanguages],
+    ["Application", "About Klickrr - Edit", a.about],
+  ];
+  const commands: PaletteCommand[] = entries.map(([category, label, run]) => ({ category, label, run }));
+  // User tools are dynamic, so append whatever the Tools menu currently shows.
+  for (const tool of loadTools()) commands.push({ category: "User Tool", label: tool.name, run: () => a.runTool(tool) });
+  return commands;
+}
 
 const getState = (): AppMenuState => ({
   sidebarVisible: !sidebarEl.classList.contains("collapsed"),
@@ -1229,6 +1485,7 @@ const htmlItems: TbItem[] = [
 standardToolbar = new Toolbar(document.getElementById("toolbar-standard")!, standardItems);
 htmlToolbar = new Toolbar(document.getElementById("toolbar-html")!, htmlItems);
 applyAppearance();
+statusZoom.textContent = loadSettings().zoom === 100 ? "" : `${loadSettings().zoom}%`;
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyAppearance());
 
 async function boot(): Promise<void> {

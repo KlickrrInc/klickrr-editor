@@ -60,6 +60,14 @@ export function saveSettings(s: EditorSettings): void {
 export function applyAppearance(s = loadSettings()): void {
   const dark = s.theme === "dark" || (s.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // The editor font is global, not per-tab, so it rides on :root custom
+  // properties rather than a CodeMirror compartment. theme.ts consumes these;
+  // keeping them here means one write updates every view (main, split, new
+  // tabs) with no state rebuild and no per-zoom-step stylesheet churn.
+  const root = document.documentElement.style;
+  root.setProperty("--kr-font-size", `${(s.fontSize * s.zoom) / 100}px`);
+  root.setProperty("--kr-font-family", s.fontFamily);
+  root.setProperty("--kr-ligatures", s.ligatures ? "normal" : "none");
 }
 
 export function openEditorSettings(onSave: (s: EditorSettings) => void): void {
